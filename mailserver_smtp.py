@@ -163,7 +163,7 @@ class SMTPSession:
         # Reset state for new message
         self.reset()
         self.state = SMTPState.HELO_DONE
-    
+
 def write_message(message, mailbox_path):
     with WRITE_MAIL_LOCK:
         with open(mailbox_path, "a") as f:
