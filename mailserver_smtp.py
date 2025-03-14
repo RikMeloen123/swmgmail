@@ -5,6 +5,9 @@ import os
 import datetime
 from enum import Enum, auto
 
+WRITE_MAIL_LOCK = threading.Lock()
+
+
 class SMTPState(Enum):
     INIT = auto()
     HELO_DONE = auto()
@@ -16,10 +19,9 @@ class SMTPState(Enum):
 class SMTPSession:
     """Handles a single SMTP session with a client."""
     
-    def __init__(self, conn, addr, lock):
+    def __init__(self, conn, addr):
         self.conn = conn
         self.addr = addr
-        self.lock = lock
         self.reset()
     
     def reset(self):
@@ -98,7 +100,10 @@ class SMTPSession:
         if self.state != SMTPState.HELO_DONE:
             self.send_response("500 Error: send HELO first")
             return
-        self.sender = line[10:].strip()
+        sender = extract_email(line, can_be_empty=True)
+        if sender == "Invalid address":
+            self.send_response("500 Error: Invalid address")
+        self.sender = sender
         self.send_response("250 OK")
         self.state = SMTPState.MAIL_FROM_DONE
 
@@ -107,7 +112,17 @@ class SMTPSession:
         if self.state not in {SMTPState.MAIL_FROM_DONE, SMTPState.RCPT_TO_DONE}:
             self.send_response("500 Error: send MAIL FROM first")
             return
-        recipient = line[8:].strip()
+        recipient = extract_email(line)
+        if recipient == "Invalid address":
+            self.send_response("500 Error: Invalid address")
+            return
+        
+        username = recipient.split("@")[0]
+        domain = recipient.split("@")[1]
+        if domain != "swmgmail.com" or username not in get_valid_usernames():
+            self.send_response("550 5.1.1 User unknown")
+            return
+
         self.recipients.append(recipient)
         self.send_response("250 OK")
         self.state = SMTPState.RCPT_TO_DONE
@@ -141,7 +156,7 @@ class SMTPSession:
             username = rec.split("@")[0]
             os.makedirs(username, exist_ok=True)
             mailbox_path = os.path.join(username, "my_mailbox.txt")
-            threading.Thread(target=write_message, args=(self.lock, message, mailbox_path)).start()
+            threading.Thread(target=write_message, args=(message, mailbox_path)).start()
 
         self.send_response("250 Mail accepted for delivery")
         
@@ -149,10 +164,41 @@ class SMTPSession:
         self.reset()
         self.state = SMTPState.HELO_DONE
     
-def write_message(lock, message, mailbox_path):
-    with lock:
+def write_message(message, mailbox_path):
+    with WRITE_MAIL_LOCK:
         with open(mailbox_path, "a") as f:
             f.write(message)
+
+def extract_email(line: str, can_be_empty=False) -> str:
+    # Ensure the command contains '<' and '>'
+    start = line.find('<')
+    end = line.find('>')
+    
+    if start == -1 or end == -1 or start > end:
+        return "Invalid address"
+    
+    # Extract the address inside angle brackets
+    address = line[start + 1:end]
+    
+    # Check if source routing is present
+    if ':' in address:
+        address = address.split(':')[-1]  # Take only the mailbox after the last ':'
+
+    if not can_be_empty and "@" not in address:
+        return "Invalid address"
+    
+    return address
+
+
+def get_valid_usernames() -> list:
+    # no lock since this file is written manually
+    usernames = []
+    with open('userinfo.txt', "r") as f:
+        content = f.read()
+    for line in content.splitlines():
+        usernames.append(line.split(' ')[0])
+    return usernames
+
 
 class SMTPServer:
     """Manages the SMTP server and client connections."""
@@ -162,7 +208,6 @@ class SMTPServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind(("", port))
         self.server_socket.listen(5)
-        self.write_lock = threading.Lock()
     
     def start(self):
         """Starts the SMTP server to accept incoming connections."""
@@ -179,7 +224,7 @@ class SMTPServer:
 
     def handle_connection(self, conn, addr):
         """Handles a new SMTP connection."""
-        session = SMTPSession(conn, addr, self.write_lock)
+        session = SMTPSession(conn, addr)
         session.handle_client()
 
 if __name__ == "__main__":
