@@ -9,7 +9,7 @@ def main():
         sys.exit(1)
     server_ip = sys.argv[1]
     smtp_port = 2525
-    pop_port = 1101
+    pop_port = 1100
     s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM) 
     s.connect((server_ip, pop_port))
 
