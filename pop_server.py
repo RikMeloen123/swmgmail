@@ -129,8 +129,8 @@ class Session:
                     self._connection.sendall(b'-ERR: RSET takes no arguments\n')
                 else:
                     self._deleted = set()
-                    size = self.getMailboxStats()[1]
-                    self._connection.sendall(f'+OK: mailbox contains {size} messages\n'.encode('utf-8'))
+                    amntMails = self.getMailboxStats()[0]
+                    self._connection.sendall(f'+OK: mailbox contains {amntMails} messages\n'.encode('utf-8'))
                         
             case _:
                 self._connection.sendall(b'-ERR: unsupported command\n')
