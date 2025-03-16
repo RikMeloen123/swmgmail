@@ -26,11 +26,11 @@ class Session:
         connection.sendall(b"+OK: POP3 server ready\n")
     
     def getPassword(self, username):
-        file = open('userinfo.txt', "r")
-        for line in file:
-            parts = line.strip().split(maxsplit=1)  # Split into username and password
-            if len(parts) == 2 and parts[0] == username:
-                return parts[1]  # Return the password
+        with open('userinfo.txt', "r") as f:
+            for line in f:
+                parts = line.strip().split(maxsplit=1)  # Split into username and password
+                if len(parts) == 2 and parts[0] == username:
+                    return parts[1]  # Return the password
         return None
     
     def parseCmd(self, input):
