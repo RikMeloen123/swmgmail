@@ -205,7 +205,7 @@ class SMTPServer:
 
     def __init__(self, port):
         self.port = port
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         self.server_socket.bind(("", port))
         self.server_socket.listen(5)
     

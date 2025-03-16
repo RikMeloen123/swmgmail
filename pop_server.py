@@ -38,7 +38,8 @@ class Session:
         cmd = list[0]
         match cmd:
             case 'QUIT':
-                self.deleteMails()
+                if self._authenticated:
+                    self.deleteMails()
                 self._connection.sendall(b'+OK: POP3 server saying good-bye\n')
                 self._connection.close()
                 return True
