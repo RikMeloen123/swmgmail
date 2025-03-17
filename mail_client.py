@@ -410,31 +410,29 @@ class MailClientGUI:
         stats = s.recv(1024).decode("utf-8")
         amnt = stats.split(' ')[1]
         amnt = int(amnt)
-        bytes = stats.split(' ')[2].strip('\r\n')
+        bytes = stats.split(' ')[2]
 
         self.clear_screen()
-        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0", width=1000)
-        frame.pack(expand=True, fill="x")
+        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        frame.pack(expand=True, fill="both")
 
-        label = tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000", wraplength=1000)
-        label.pack(fill='x', expand=True)
-
+        tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(anchor="w", pady=5)
 
         container = tk.Frame(frame)
         container.pack(fill=tk.BOTH, expand=True)
 
-        self.canvas = tk.Canvas(container)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(container)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
+        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-        self.inner_frame = tk.Frame(self.canvas)
+        inner_frame = tk.Frame(self.canvas)
 
-        self.frame_window = self.canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
+        canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
 
-        self.inner_frame.bind("<Configure>", self.on_frame_configure)
+        inner_frame.bind("<Configure>", self.on_frame_configure)
 
 
         for i in range(1, amnt + 1):
@@ -442,7 +440,7 @@ class MailClientGUI:
             content = s.recv(1024).decode("utf-8")
             if not content.startswith('-ERR'):
                 summary = f'{i}. {summarize_mail(content)}'
-                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
+                tk.Button(inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
         
         tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
@@ -508,7 +506,6 @@ class MailClientGUI:
     
     def view_mail_2(self, mail_number, back_fn):
         self.clear_screen()
-        print(mail_number)
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True, fill="both")
 
@@ -529,7 +526,7 @@ class MailClientGUI:
 
         tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
         
-        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email_2(mail_number), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email_2(mail_number, back_fn), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Back", font=self.default_font, command=back_fn, bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
     
     def search_mail(self):
@@ -537,19 +534,25 @@ class MailClientGUI:
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True)
         
-        tk.Label(frame, text="Search Emails", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(pady=10)
+        tk.Label(frame, text="Search Emails (enter date as MM/DD/YYYY)", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(pady=10)
         
         self.search_entry = tk.Entry(frame, font=self.default_font)
         self.search_entry.pack(fill="x", pady=5)
         
-        tk.Button(frame, text="Search", font=self.default_font, command=self.perform_search, bg="#4CAF50").pack(pady=5, fill="x")
+        button_frame = tk.Frame(frame, bg="#f0f0f0")
+        button_frame.pack(pady=5, fill="x")
+
+        tk.Button(button_frame, text="Search by Keyword", font=self.default_font, command=self.perform_search, bg="#4CAF50").pack(side="left", expand=True, fill="x", padx=2)
+        tk.Button(button_frame, text="Search by Date", font=self.default_font, command=self.search_by_date, bg="#2196F3").pack(side="left", expand=True, fill="x", padx=2)
+        tk.Button(button_frame, text="Search by Sender", font=self.default_font, command=self.search_by_sender, bg="#FF9800").pack(side="left", expand=True, fill="x", padx=2)
         
         self.results_box = scrolledtext.ScrolledText(frame, height=10, font=self.default_font)
         self.results_box.configure(state='disabled')
         self.results_box.pack(fill="both", pady=5)
         
         tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E").pack(pady=5, fill="x")
-        
+    
+    def get_all_mails(self):
         self.open_pop_connection()
         self.pop_connection.sendall(b'STAT\r\n')
         stats = self.pop_connection.recv(1024).decode("utf-8")
@@ -561,29 +564,65 @@ class MailClientGUI:
             self.all_mails.append(self.pop_connection.recv(4096).decode("utf-8"))
         
         self.close_pop_connection()
-
-    def perform_search(self, query=None):
+    
+    def get_search_query(self, query=None):
         if query is None:
             query = self.search_entry.get().strip()
         else:
             self.search_mail()
             self.search_entry.insert(0, query)
+        return query
+
+    def search_by_date(self, query=None):
+        query = self.get_search_query(query)
         if not query:
             messagebox.showerror("Error", "Please enter a search query.")
             return
+        self.get_all_mails()
+        results = []
+        for i, mail in enumerate(self.all_mails):
+            dateline = mail.split('\n')[4]
+            if query in dateline:
+                results.append((i+1, summarize_mail(mail)))
+        self.display_results(results, lambda query=query: self.search_by_date(query))
+
+    def search_by_sender(self, query=None):
+        query = self.get_search_query(query)
+        if not query:
+            messagebox.showerror("Error", "Please enter a search query.")
+            return
+        self.get_all_mails()
+        results = []
+        for i, mail in enumerate(self.all_mails):
+            fromLine = mail.split('\n')[1]
+            toLine = mail.split('\n')[2]
+            if query in fromLine or query in toLine:
+                results.append((i+1, summarize_mail(mail)))
+        self.display_results(results, lambda query=query: self.search_by_sender(query))
+
+
+    def perform_search(self, query=None):
+        query = self.get_search_query(query)
+        if not query:
+            messagebox.showerror("Error", "Please enter a search query.")
+            return
+        
+        self.get_all_mails()
         
         results = []
         for i, mail in enumerate(self.all_mails):
             if query.lower() in mail.lower():
                 results.append((i+1, summarize_mail(mail)))
-        
+        self.display_results(results, lambda query=query: self.perform_search(query))
+    
+    def display_results(self, results, back_fn):
         self.results_box.configure(state='normal')
         self.results_box.delete("1.0", tk.END)
         if len(results) != 0:
             inner_frame = tk.Frame(self.results_box)
             self.results_box.window_create(tk.END, window=inner_frame)
             for i, result in results:
-                tk.Button(inner_frame, text=result, font=self.default_font, command=lambda i=i: self.view_mail_2(i, lambda: self.perform_search(query=query)), bg="#4CAF50").pack(pady=5, fill="x")
+                tk.Button(inner_frame, text=result, font=self.default_font, command=lambda i=i: self.view_mail_2(i, back_fn), bg="#4CAF50").pack(pady=5, fill="x")
         else:
             self.results_box.insert(tk.END, "No emails found.")
         self.results_box.configure(state='disabled')
@@ -658,9 +697,6 @@ class MailClientGUI:
         s.recv(1024)
         self.manage_mail(s)
 
-    def on_frame_configure(self, event):
-        """Update scroll region when the frame size changes."""
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
 def summarize_mail(content):
     lines = content.split("\n")
