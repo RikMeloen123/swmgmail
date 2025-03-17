@@ -478,57 +478,113 @@ class MailClientGUI:
             messagebox.showinfo('Delete', 'Something went wrong')
         
         self.manage_mail(s)
-
-    def search_mail(self):
-            self.clear_screen()
-            frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
-            frame.pack(expand=True)
-            
-            tk.Label(frame, text="Search Emails", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(pady=10)
-            
-            self.search_entry = tk.Entry(frame, font=self.default_font)
-            self.search_entry.pack(fill="x", pady=5)
-            
-            tk.Button(frame, text="Search", font=self.default_font, command=self.perform_search, bg="#4CAF50").pack(pady=5, fill="x")
-            
-            self.results_box = scrolledtext.ScrolledText(frame, height=10, font=self.default_font)
-            self.results_box.pack(fill="both", pady=5)
-            
-            tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E").pack(pady=5, fill="x")
     
-    def perform_search(self):
-        query = self.search_entry.get().strip()
+    def close_pop_connection(self):
+        self.pop_connection.sendall(b'QUIT\r\n')
+        self.pop_connection.recv(1024)
+        self.pop_connection.close()
+    
+    def open_pop_connection(self):
+        self.pop_connection = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        self.pop_connection.connect((self.server_ip, self.pop_port))
+        self.pop_connection.recv(1024)
+        self.pop_connection.sendall(f"USER {self.u}\r\n".encode('utf-8'))
+        self.pop_connection.recv(1024)
+        self.pop_connection.sendall(f"PASS {self.p}\r\n".encode('utf-8'))
+        self.pop_connection.recv(1024)
+    
+    def delete_email_2(self, mail_number, callback_fn):
+        self.open_pop_connection()
+        self.pop_connection.sendall(f'DELE {mail_number}'.encode('utf-8'))
+        response = self.pop_connection.recv(2024).decode('utf-8')
+        if response.startswith('+OK'):
+            messagebox.showinfo('Delete', 'Message deleted.')
+        else:
+            messagebox.showinfo('Delete', 'Something went wrong')
+        self.close_pop_connection()
+        callback_fn()
+    
+    def view_mail_2(self, mail_number, back_fn):
+        self.clear_screen()
+        print(mail_number)
+        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        frame.pack(expand=True, fill="both")
+
+        self.open_pop_connection()
+        self.pop_connection.sendall(f'RETR {mail_number}'.encode('utf-8'))
+        content = self.pop_connection.recv(1024).decode()
+        self.close_pop_connection()
+        lines = content.split('\n')
+        email_content = ''
+
+        for line in lines:
+            if line.startswith('+OK'):
+                bytes = line.split('+OK: ')[1]
+            else:
+                email_content += f'{line}\n'
+        email_content += f'Amount of bytes: {bytes}\n'
+
+
+        tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
+        
+        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email_2(mail_number), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Back", font=self.default_font, command=back_fn, bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+    
+    def search_mail(self):
+        self.clear_screen()
+        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        frame.pack(expand=True)
+        
+        tk.Label(frame, text="Search Emails", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(pady=10)
+        
+        self.search_entry = tk.Entry(frame, font=self.default_font)
+        self.search_entry.pack(fill="x", pady=5)
+        
+        tk.Button(frame, text="Search", font=self.default_font, command=self.perform_search, bg="#4CAF50").pack(pady=5, fill="x")
+        
+        self.results_box = scrolledtext.ScrolledText(frame, height=10, font=self.default_font)
+        self.results_box.configure(state='disabled')
+        self.results_box.pack(fill="both", pady=5)
+        
+        tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E").pack(pady=5, fill="x")
+        
+        self.open_pop_connection()
+        self.pop_connection.sendall(b'STAT\r\n')
+        stats = self.pop_connection.recv(1024).decode("utf-8")
+        amnt = int(stats.split(' ')[1])
+        
+        self.all_mails = []
+        for i in range(1, amnt + 1):
+            self.pop_connection.sendall(f'RETR {i}\r\n'.encode('utf-8'))
+            self.all_mails.append(self.pop_connection.recv(4096).decode("utf-8"))
+        
+        self.close_pop_connection()
+
+    def perform_search(self, query=None):
+        if query is None:
+            query = self.search_entry.get().strip()
+        else:
+            self.search_mail()
+            self.search_entry.insert(0, query)
         if not query:
             messagebox.showerror("Error", "Please enter a search query.")
             return
         
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((self.server_ip, self.pop_port))
-        s.recv(1024)
-        s.sendall(f"USER {self.u}\r\n".encode('utf-8'))
-        s.recv(1024)
-        s.sendall(f"PASS {self.p}\r\n".encode('utf-8'))
-        s.recv(1024)
-        
-        s.sendall(b'STAT\r\n')
-        stats = s.recv(1024).decode("utf-8")
-        amnt = int(stats.split(' ')[1])
-        
         results = []
-        for i in range(1, amnt + 1):
-            s.sendall(f'RETR {i}\r\n'.encode('utf-8'))
-            content = s.recv(4096).decode("utf-8")
-            if query.lower() in content.lower():
-                results.append(summarize_mail(content))
+        for i, mail in enumerate(self.all_mails):
+            if query.lower() in mail.lower():
+                results.append((i+1, summarize_mail(mail)))
         
-        s.sendall(b'QUIT\r\n')
-        s.recv(1024)
-        
+        self.results_box.configure(state='normal')
         self.results_box.delete("1.0", tk.END)
-        if results:
-            self.results_box.insert(tk.END, "\n".join(results))
+        if len(results) != 0:
+            inner_frame = tk.Frame(self.results_box)
+            self.results_box.window_create(tk.END, window=inner_frame)
+            for i, result in results:
+                tk.Button(inner_frame, text=result, font=self.default_font, command=lambda i=i: self.view_mail_2(i, lambda: self.perform_search(query=query)), bg="#4CAF50").pack(pady=5, fill="x")
         else:
             self.results_box.insert(tk.END, "No emails found.")
+        self.results_box.configure(state='disabled')
 
     def is_valid_email(self, email):
         if "@" not in email or len(email.split("@")) != 2:
