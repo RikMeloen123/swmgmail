@@ -138,7 +138,7 @@ class MailClient:
             s.recv(1024)
 
             # Send the mail text followed by the termination sequence
-            s.sendall((mail_text + "\r\n.\r\n").encode())
+            s.sendall((mail_text + "\r\n.\r\n").encode("utf-8"))
             s.recv(1024)
 
             s.sendall(b"QUIT\r\n")
@@ -149,17 +149,169 @@ class MailClient:
             print("Error sending mail:", e)
 
     def manage_mail(self):
-        raise Exception("Not yet implemented")
+        s = self.start_pop_session()
+
+        s.sendall(b'STAT') #get the amount of emails
+        stats = s.recv(1024).decode("utf-8")
+        amnt = stats.split(' ')[1]
+        amnt = int(amnt)
+
+        for i in range(1, amnt + 1):
+            s.sendall(f'RETR {i}'.encode('utf-8'))
+            content = s.recv(1024).decode("utf-8")
+            summary = summarize_mail(content)
+            print(f"{i} {summary}")
+
+        while True:
+                print("\nManagement Options:")
+                print("1) Get mailbox statistics")
+                print("2) List statistics per mail")
+                print("3) Retrieve an email")
+                print("4) Delete an email")
+                print("5) Reset changes")
+                print("6) Save changes and quit")
+                choice = input("Enter your choice: ")
+                if choice == "1":
+                    s.sendall(b'STAT') #get the amount of emails
+                    stats = s.recv(1024).decode("utf-8")
+                    print(stats)
+                elif choice == "2":
+                    emailno = input('What email would you like to get statistics of? (leave empty for list of all emails)\n')
+                    if emailno == '':
+                        s.sendall(b'LIST')
+                        stats = s.recv(1024).decode("utf-8")
+                        print(stats)
+                    else:
+                        s.sendall(f'LIST {emailno}'.encode())
+                        stats = s.recv(1024).decode("utf-8")
+                        print(stats)
+                elif choice == "3":
+                    emailno = input('What email would you like to retrieve?\n')
+                    s.sendall(f'RETR {emailno}'.encode())
+                    mail = s.recv(1024).decode("utf-8")
+                    print(f'\n{mail}')
+                elif choice == "4":
+                    emailno = input('What email would you like to delete?\n')
+                    s.sendall(f'DELE {emailno}'.encode())
+                    response = s.recv(1024).decode("utf-8")
+                    print(response)
+                elif choice == "5":
+                    s.sendall(b'RSET')
+                    response = s.recv(1024).decode('utf-8')
+                    print(response)
+                elif choice == "6":
+                    s.sendall(b'QUIT')
+                    response = s.recv(1024).decode('utf-8')
+                    print(response)
+                    break
+                else:
+                    print("Invalid option. Please try again.")
 
     def search_mail(self):
-        raise Exception("Not yet implemented")
+        s = self.start_pop_session()
+
+        while True:
+            print("\nSearching Options:")
+            print("1) Search for words/sentences")
+            print("2) Search for date")
+            print("3) Search for emailadress")
+            print("4) Exit")
+            choice = input("Enter your choice: ")
+            if choice == '1':
+                query = input('Enter query: ')
+                self.search_query(query, s)
+            elif choice == '2':
+                date = input('Enter date (in MM/DD/YY): ')
+                self.search_date(date, s)
+            elif choice == '3':
+                adress = input('Enter emailaddress: ')
+                self.search_adress(adress, s)
+            elif choice == '4':
+                s.sendall(b'QUIT')
+                s.recv(1024)
+                break
+            else:
+                print('Invalid option. Please try again.')
+
+    def summarize_mail(self, content):
+        lines = content.split("\n")
+        sender = next((line.split(": ")[1] for line in lines if line.startswith("From:")), "Unknown")
+        received = next((line.split(": ")[1] + ": " + line.split(": ")[2] for line in lines if line.startswith("Received:")), "Unknown")
+        subject = next((line.split(": ")[1] for line in lines if line.startswith("Subject:")), "No Subject")
+        return f"From: {sender} Received: {received} Subject: {subject}"
+    
+    def summarize_mail_with_recipient(self, content):
+        lines = content.split("\n")
+        sender = next((line.split(": ")[1] for line in lines if line.startswith("From:")), "Unknown")
+        recipient = next((line.split(": ")[1] for line in lines if line.startswith("To:")), "Unknown")
+        received = next((line.split(": ")[1] + ": " + line.split(": ")[2] for line in lines if line.startswith("Received:")), "Unknown")
+        subject = next((line.split(": ")[1] for line in lines if line.startswith("Subject:")), "No Subject")
+        return f"From: {sender} To: {recipient} Received: {received} Subject: {subject}"
+    
+    def start_pop_session(self):
+        authenticated = False
+        while not authenticated:
+            authenticated = self.validate_password
+            if not authenticated:
+                print('Username or password invalid, try again.')
+                self.authenticate
+        
+        #start POP3 session
+        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        s.connect((self.server_ip, self.pop_port))
+        greeting = s.recv(1024).decode("utf-8")
+        print(greeting)
+        s.sendall(f"USER {self.username}\r\n".encode('utf-8'))
+        s.recv(1024) # ok message (username always ok)
+        s.sendall(f"PASS {self.password}\r\n".encode('utf-8'))
+        s.recv(1024) # ok message since login has been checked
+        return s
+    
+    def search_query(self, query, s):
+        s.sendall(b'STAT') #get the amount of emails
+        stats = s.recv(1024).decode("utf-8")
+        amnt = stats.split(' ')[1]
+        amnt = int(amnt)
+
+        for i in range(1, amnt + 1):
+            s.sendall(f'RETR {i}'.encode('utf-8'))
+            content = s.recv(1024).decode()
+            if query in content:
+                print(f'{i}. {self.summarize_mail_with_recipient(content)}')
+
+    def search_date(self, date, s):
+        s.sendall(b'STAT') #get the amount of emails
+        stats = s.recv(1024).decode("utf-8")
+        amnt = stats.split(' ')[1]
+        amnt = int(amnt)
+
+        for i in range(1, amnt + 1):
+            s.sendall(f'RETR {i}'.encode('utf-8'))
+            content = s.recv(1024).decode()
+            dateline = content.split('\n')[4]
+            if date in dateline:
+                print(f'{i}. {self.summarize_mail_with_recipient(content)}')
+
+    def search_adress(self, adress, s):
+        s.sendall(b'STAT') #get the amount of emails
+        stats = s.recv(1024).decode("utf-8")
+        amnt = stats.split(' ')[1]
+        amnt = int(amnt)
+
+        for i in range(1, amnt + 1):
+            s.sendall(f'RETR {i}'.encode('utf-8'))
+            content = s.recv(1024).decode()
+            fromLine = content.split('\n')[1]
+            toLine = content.split('\n')[2]
+            if adress in fromLine or adress in toLine:
+                print(f'{i}. {self.summarize_mail_with_recipient(content)}')
 
 
 class MailClientGUI:
     def __init__(self, root, server_ip, smtp_port, pop_port):
         self.root = root
         self.root.title("Mail Client")
-        self.root.geometry("400x400")  # Set default window size
+        self.root.geometry("600x600")  # Set default window size
         self.root.configure(bg="#f0f0f0")  # Light background
 
         self.server_ip = server_ip
@@ -178,13 +330,13 @@ class MailClientGUI:
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True)
         
-        tk.Label(frame, text="Username:", font=self.default_font, bg="#f0f0f0").pack(anchor="w")
+        tk.Label(frame, text="Username:", font=self.default_font, bg="#f0f0f0", fg='#000000').pack(anchor="w")
         tk.Entry(frame, textvariable=self.username, font=self.default_font).pack(fill="x", pady=5)
         
-        tk.Label(frame, text="Password:", font=self.default_font, bg="#f0f0f0").pack(anchor="w")
+        tk.Label(frame, text="Password:", font=self.default_font, bg="#f0f0f0", fg='#000000').pack(anchor="w")
         tk.Entry(frame, textvariable=self.password, show="*", font=self.default_font).pack(fill="x", pady=5)
         
-        tk.Button(frame, text="Login", font=self.default_font, command=self.authenticate, bg="#4CAF50", fg="white").pack(pady=10)
+        tk.Button(frame, text="Login", font=self.default_font, command=self.authenticate, bg="#4CAF50", fg='#000000').pack(pady=10)
     
     def authenticate(self):
         username = self.username.get()
@@ -192,6 +344,8 @@ class MailClientGUI:
         
         if self.validate_password(username, password):
             messagebox.showinfo("Login", "You're now logged in")
+            self.u = username
+            self.p = password
             self.create_main_menu()
         else:
             messagebox.showerror("Login Failed", "Incorrect username or password!")
@@ -216,29 +370,92 @@ class MailClientGUI:
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True)
         
-        tk.Button(frame, text="Send Mail", font=self.default_font, command=self.create_mail_screen, bg="#2196F3", fg="white").pack(pady=10, fill="x")
-        tk.Button(frame, text="Exit", font=self.default_font, command=self.root.quit, bg="#f44336", fg="white").pack(pady=10, fill="x")
+        tk.Button(frame, text="Send Mail", font=self.default_font, command=self.create_mail_screen, bg="#2196F3", fg='#000000').pack(pady=10, fill="x")
+        tk.Button(frame, text="Mail Management", font=self.default_font, command=self.manage_mail, bg="#FF9800", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Mail Searching", font=self.default_font, command=self.search_mail, bg="#9C27B0", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Exit", font=self.default_font, command=self.root.quit, bg="#f44336", fg='#000000').pack(pady=10, fill="x")
     
     def create_mail_screen(self):
         self.clear_screen()
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True)
         
-        tk.Label(frame, text="To:", font=self.default_font, bg="#f0f0f0").pack(anchor="w")
+        tk.Label(frame, text="To:", font=self.default_font, bg="#f0f0f0", fg='#000000').pack(anchor="w")
         self.recipient_entry = tk.Entry(frame, font=self.default_font)
         self.recipient_entry.pack(fill="x", pady=5)
         
-        tk.Label(frame, text="Subject:", font=self.default_font, bg="#f0f0f0").pack(anchor="w")
+        tk.Label(frame, text="Subject:", font=self.default_font, bg="#f0f0f0", fg='#000000').pack(anchor="w")
         self.subject_entry = tk.Entry(frame, font=self.default_font)
         self.subject_entry.pack(fill="x", pady=5)
         
-        tk.Label(frame, text="Message:", font=self.default_font, bg="#f0f0f0").pack(anchor="w")
+        tk.Label(frame, text="Message:", font=self.default_font, bg="#f0f0f0", fg='#000000').pack(anchor="w")
         self.message_text = scrolledtext.ScrolledText(frame, height=6, font=self.default_font)
         self.message_text.pack(fill="both", pady=5)
         
-        tk.Button(frame, text="Send", font=self.default_font, command=self.send_mail, bg="#4CAF50", fg="white").pack(pady=5, fill="x")
-        tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E", fg="white").pack(pady=5, fill="x")
+        tk.Button(frame, text="Send", font=self.default_font, command=self.send_mail, bg="#4CAF50", fg='#000000').pack(pady=5, fill="x")
+        tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E",fg='#000000').pack(pady=5, fill="x")
     
+    def manage_mail(self, s=None):
+        #start POP3 session
+        if s==None:
+            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            s.connect((self.server_ip, self.pop_port))
+            s.recv(1024) #greeting message
+            s.sendall(f"USER {self.u}\r\n".encode('utf-8'))
+            s.recv(1024) # ok message (username always ok)
+            s.sendall(f"PASS {self.p}\r\n".encode('utf-8'))
+            s.recv(1024) # ok message since login has been checked
+
+        s.sendall(b'STAT') #get the amount of emails
+        stats = s.recv(1024).decode("utf-8")
+        amnt = stats.split(' ')[1]
+        amnt = int(amnt)
+        bytes = stats.split(' ')[2]
+
+        self.clear_screen()
+        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        frame.pack(expand=True, fill="both")
+
+        tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(anchor="w", pady=5)
+
+        for i in range(1, amnt + 1):
+            s.sendall(f'RETR {i}'.encode('utf-8'))
+            content = s.recv(1024).decode("utf-8")
+            summary = f'{i}. {summarize_mail(content)}'
+            tk.Button(frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
+        
+        tk.Button(frame, text="Save changes and exit", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+    
+    def view_email(self, summary, s):
+        self.clear_screen()
+        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+        frame.pack(expand=True, fill="both")
+
+        emailno = summary.split('.')[0]
+        s.sendall(f'RETR {emailno}'.encode('utf-8'))
+        email_content = s.recv(1024).decode()
+
+
+        tk.Label(frame, text=summary, font=self.default_font, bg="#f0f0f0", fg="#000000", justify='left').pack(anchor="w", pady=10)
+        tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
+        
+        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email(emailno, s), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Back", font=self.default_font, command=lambda: self.save_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+    
+    def delete_email(self, emailno, s):
+        s.sendall(f'DELE {emailno}'.encode('utf-8'))
+        response = s.recv(2024).decode('utf-8')
+        if response.startswith('+OK'):
+            messagebox.showinfo('Delete', 'Message deleted.')
+        else:
+            messagebox.showinfo('Delete', 'Something went wrong')
+        
+        self.manage_mail(s)
+
+
+    def search_mail(self):
+        pass  # Placeholder for mail searching functionality
+
     def is_valid_email(self, email):
         if "@" not in email or len(email.split("@")) != 2:
             return False
@@ -298,7 +515,19 @@ class MailClientGUI:
         for widget in self.root.winfo_children():
             widget.destroy()
 
+    def save_changes(self, s):
+        s.sendall(b'QUIT')
+        s.recv(1024)
+        s.close()
+        self.create_main_menu()
 
+
+def summarize_mail(content):
+    lines = content.split("\n")
+    sender = next((line.split(": ")[1] for line in lines if line.startswith("From:")), "Unknown")
+    received = next((line.split(": ")[1] + ": " + line.split(": ")[2] for line in lines if line.startswith("Received:")), "Unknown")
+    subject = next((line.split(": ")[1] for line in lines if line.startswith("Subject:")), "No Subject")
+    return f"\nFrom: {sender} \nReceived: {received} \nSubject: {subject}"
 
 
 def main():
@@ -313,6 +542,9 @@ def main():
     root = tk.Tk()
     MailClientGUI(root, server_ip, smtp_port, pop_port)
     root.mainloop()
+
+    """client = MailClient(server_ip, smtp_port, pop_port)
+    client.start()"""
 
 if __name__ == "__main__":
     main()

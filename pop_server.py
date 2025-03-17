@@ -82,13 +82,24 @@ class Session:
 
             case 'LIST':
                 if not self._authenticated:
-                    self._connection.sendall(b'-ERR: authenticate first\n')
-                elif len(list) != 1:
-                    self._connection.sendall(b'-ERR: LIST takes no arguments\n')
-                else: 
+                    self._connection.sendall(b'-ERR: authenticate first\n')                    
+                elif len(list) == 1: 
                     [amntMails, size] = self.getMailboxStats()
                     emails = self.listEmails()
                     self._connection.sendall(f'+OK: {amntMails} {size}\n{emails}'.encode('utf-8'))
+                elif len(list) == 2:
+                    [amntMails, size] = self.getMailboxStats()
+                    emailno = list[1]
+                    if not emailno.isnumeric():
+                        self._connection.sendall(b'-ERR: emailno must be a number\n')
+                    emailno = int(emailno)
+                    if not (1 <= emailno <= amntMails):
+                        self._connection.sendall(b'-ERR: emailno not found\n')
+                    else:
+                        emails = self.listEmails(emailno)
+                        self._connection.sendall(f'+OK:\n{emails}'.encode('utf-8'))
+                else:
+                    self._connection.sendall(b'-ERR: LIST [emailno] with emailno optional expected\n')
 
 
             case 'RETR':
@@ -148,27 +159,28 @@ class Session:
         size = os.path.getsize(self._mailboxPath)
         return [amntMails, size]
     
-    def listEmails(self):
+    def listEmails(self, email_number = None):
         emails = []
         mailbox = open(self._mailboxPath, "r", encoding="utf-8")
-        email_data = {}
         index = 1
+        current_email= []
         for line in mailbox:
-            line = line.strip()
-            if line.startswith("From: "):
-                email_data["from"] = line.split(": ")[1]
-            elif line.startswith("Received: "):
-                email_data["received"] = line.split(": ")[1]
-            elif line.startswith("Subject: "):
-                email_data["subject"] = line.split(": ")[1]
-            elif line == ".":  # End of email
+            if line.strip() == ".":
                 if not index in self._deleted:
-                    emails.append(email_data)
+                   emails.append("\n".join(current_email))
+                current_email = []
                 index += 1
-                email_data = {}
+            else:
+                current_email.append(line.strip())
+
         output = ''
-        for i, email in enumerate(emails, start=1):
-            output += (f"{i}. {email.get('from', 'Unknown')} {email.get('received', 'Unknown')} {email.get('subject', 'No Subject')}\n")
+        if email_number is not None:
+            email_size = len(emails[email_number - 1].encode("utf-8"))
+            output += f"{email_number}. {email_size}\n"
+        else:
+            for i, email in enumerate(emails, start=1):
+                email_size = len(email.encode("utf-8"))
+                output += f"{i}. {email_size}\n"
         return output
     
     def getEmailByNumber(self, emailno):
