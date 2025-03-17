@@ -410,29 +410,31 @@ class MailClientGUI:
         stats = s.recv(1024).decode("utf-8")
         amnt = stats.split(' ')[1]
         amnt = int(amnt)
-        bytes = stats.split(' ')[2]
+        bytes = stats.split(' ')[2].strip('\r\n')
 
         self.clear_screen()
-        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
-        frame.pack(expand=True, fill="both")
+        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0", width=1000)
+        frame.pack(expand=True, fill="x")
 
-        tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(anchor="w", pady=5)
+        label = tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000", wraplength=1000)
+        label.pack(fill='x', expand=True)
+
 
         container = tk.Frame(frame)
         container.pack(fill=tk.BOTH, expand=True)
 
-        canvas = tk.Canvas(container)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(container)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
 
-        inner_frame = tk.Frame(self.canvas)
+        self.inner_frame = tk.Frame(self.canvas)
 
-        frame_window = canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
+        self.frame_window = self.canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
 
-        inner_frame.bind("<Configure>", self.on_frame_configure)
+        self.inner_frame.bind("<Configure>", self.on_frame_configure)
 
 
         for i in range(1, amnt + 1):
@@ -440,7 +442,7 @@ class MailClientGUI:
             content = s.recv(1024).decode("utf-8")
             if not content.startswith('-ERR'):
                 summary = f'{i}. {summarize_mail(content)}'
-                tk.Button(inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
+                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
         
         tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
@@ -600,6 +602,9 @@ class MailClientGUI:
         s.recv(1024)
         self.manage_mail(s)
 
+    def on_frame_configure(self, event):
+        """Update scroll region when the frame size changes."""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
 def summarize_mail(content):
     lines = content.split("\n")
