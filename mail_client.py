@@ -397,7 +397,7 @@ class MailClientGUI:
     
     def manage_mail(self, s=None):
         #start POP3 session
-        if s==None:
+        if s is None:
             s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
             s.connect((self.server_ip, self.pop_port))
             s.recv(1024) #greeting message
@@ -418,13 +418,32 @@ class MailClientGUI:
 
         tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(anchor="w", pady=5)
 
+        container = tk.Frame(frame)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        canvas = tk.Canvas(container)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        inner_frame = tk.Frame(self.canvas)
+
+        frame_window = canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
+
+        inner_frame.bind("<Configure>", self.on_frame_configure)
+
+
         for i in range(1, amnt + 1):
             s.sendall(f'RETR {i}'.encode('utf-8'))
             content = s.recv(1024).decode("utf-8")
-            summary = f'{i}. {summarize_mail(content)}'
-            tk.Button(frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
+            if not content.startswith('-ERR'):
+                summary = f'{i}. {summarize_mail(content)}'
+                tk.Button(inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
         
-        tk.Button(frame, text="Save changes and exit", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
     
     def view_email(self, summary, s):
         self.clear_screen()
@@ -433,14 +452,22 @@ class MailClientGUI:
 
         emailno = summary.split('.')[0]
         s.sendall(f'RETR {emailno}'.encode('utf-8'))
-        email_content = s.recv(1024).decode()
+        content = s.recv(1024).decode()
+        lines = content.split('\n')
+        email_content = ''
+
+        for line in lines:
+            if line.startswith('+OK'):
+                bytes = line.split('+OK: ')[1]
+            else:
+                email_content += f'{line}\n'
+        email_content += f'Amount of bytes: {bytes}\n'
 
 
-        tk.Label(frame, text=summary, font=self.default_font, bg="#f0f0f0", fg="#000000", justify='left').pack(anchor="w", pady=10)
         tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
         
         tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email(emailno, s), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
-        tk.Button(frame, text="Back", font=self.default_font, command=lambda: self.save_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Back", font=self.default_font, command=lambda: self.manage_mail(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
     
     def delete_email(self, emailno, s):
         s.sendall(f'DELE {emailno}'.encode('utf-8'))
@@ -452,9 +479,56 @@ class MailClientGUI:
         
         self.manage_mail(s)
 
-
     def search_mail(self):
-        pass  # Placeholder for mail searching functionality
+            self.clear_screen()
+            frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
+            frame.pack(expand=True)
+            
+            tk.Label(frame, text="Search Emails", font=self.default_font, bg="#f0f0f0", fg="#000000").pack(pady=10)
+            
+            self.search_entry = tk.Entry(frame, font=self.default_font)
+            self.search_entry.pack(fill="x", pady=5)
+            
+            tk.Button(frame, text="Search", font=self.default_font, command=self.perform_search, bg="#4CAF50").pack(pady=5, fill="x")
+            
+            self.results_box = scrolledtext.ScrolledText(frame, height=10, font=self.default_font)
+            self.results_box.pack(fill="both", pady=5)
+            
+            tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E").pack(pady=5, fill="x")
+    
+    def perform_search(self):
+        query = self.search_entry.get().strip()
+        if not query:
+            messagebox.showerror("Error", "Please enter a search query.")
+            return
+        
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((self.server_ip, self.pop_port))
+        s.recv(1024)
+        s.sendall(f"USER {self.u}\r\n".encode('utf-8'))
+        s.recv(1024)
+        s.sendall(f"PASS {self.p}\r\n".encode('utf-8'))
+        s.recv(1024)
+        
+        s.sendall(b'STAT\r\n')
+        stats = s.recv(1024).decode("utf-8")
+        amnt = int(stats.split(' ')[1])
+        
+        results = []
+        for i in range(1, amnt + 1):
+            s.sendall(f'RETR {i}\r\n'.encode('utf-8'))
+            content = s.recv(4096).decode("utf-8")
+            if query.lower() in content.lower():
+                results.append(summarize_mail(content))
+        
+        s.sendall(b'QUIT\r\n')
+        s.recv(1024)
+        
+        self.results_box.delete("1.0", tk.END)
+        if results:
+            self.results_box.insert(tk.END, "\n".join(results))
+        else:
+            self.results_box.insert(tk.END, "No emails found.")
 
     def is_valid_email(self, email):
         if "@" not in email or len(email.split("@")) != 2:
@@ -520,6 +594,11 @@ class MailClientGUI:
         s.recv(1024)
         s.close()
         self.create_main_menu()
+
+    def reset_changes(self, s):
+        s.sendall(b'RSET')
+        s.recv(1024)
+        self.manage_mail(s)
 
 
 def summarize_mail(content):

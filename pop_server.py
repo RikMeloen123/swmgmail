@@ -7,6 +7,7 @@ Supported commands (after authentication): STAT, LIST, RETR <msg>, DELE <msg>, R
 Usage: python pop_server.py <POP3_port>
 """
 
+import fcntl
 import socket
 import threading
 import sys
@@ -23,7 +24,7 @@ class Session:
         self._connection = connection
         self._deleted = set()
         self._mailboxPath = None
-        connection.sendall(b"+OK: POP3 server ready\n")
+        connection.sendall(b"+OK: POP3 server ready\r\n")
     
     def getPassword(self, username):
         with open('userinfo.txt', "r") as f:
@@ -33,6 +34,9 @@ class Session:
                     return parts[1]  # Return the password
         return None
     
+    def sendMessage(self, message):
+        self._connection.sendall(f'{message}\r\n'.encode('utf-8'))
+    
     def parseCmd(self, input):
         list = input.split(" ")
         cmd = list[0]
@@ -40,159 +44,178 @@ class Session:
             case 'QUIT':
                 if self._authenticated:
                     self.deleteMails()
-                self._connection.sendall(b'+OK: POP3 server saying good-bye\n')
+                self.sendMessage('+OK: POP3 server saying good-bye')
                 self._connection.close()
                 return True
 
 
             case 'USER':
                 if self._authenticated:
-                    self._connection.sendall(b'-ERR: Already authenticated\n')
+                    self.sendMessage('-ERR: Already authenticated')
                 elif len(list) != 2:
-                    self._connection.sendall(b'-ERR: USER <username> expected\n')
+                    self.sendMessage('-ERR: USER <username> expected')
                 else: 
                     self._username = list[1]
-                    self._connection.sendall(b'+OK: send your password\n')
+                    self.sendMessage('+OK: send your password')
 
 
             case 'PASS':
                 if self._authenticated:
-                    self._connection.sendall(b'-ERR: already authenticated\n')
+                    self.sendMessage('-ERR: already authenticated')
                 elif len(list) != 2:
-                    self._connection.sendall(b'-ERR: PASS <password> expected\n')
+                    self.sendMessage('-ERR: PASS <password> expected')
                 else: 
                     self._password = list[1]
                     if self._password == self.getPassword(self._username):
                         self._authenticated = True
                         self._mailboxPath = f"{self._username}/my_mailbox.txt"
-                        self._connection.sendall(b'+OK: Logged in\n')
+                        self.sendMessage('+OK: Logged in')
                     else:
-                        self._connection.sendall(b'-ERR: USER or PASS incorrect\n')
+                        self.sendMessage('-ERR: USER or PASS incorrect')
 
 
             case 'STAT':
                 if not self._authenticated:
-                    self._connection.sendall(b'-ERR: authenticate first\n')
+                    self.sendMessage('-ERR: authenticate first')
                 elif len(list) != 1:
-                    self._connection.sendall(b'-ERR: STAT takes no arguments\n')
+                    self.sendMessage('-ERR: STAT takes no arguments')
                 else:
-                    [amntMails, size] = self.getMailboxStats()
-                    self._connection.sendall(f'+OK: {amntMails} {size}\n'.encode('utf-8'))
+                    [amntMails, size] = self.getAllMailboxStats()
+                    self.sendMessage(f'+OK: {amntMails} {size}')
 
 
             case 'LIST':
                 if not self._authenticated:
-                    self._connection.sendall(b'-ERR: authenticate first\n')                    
+                    self.sendMessage('-ERR: authenticate first')                    
                 elif len(list) == 1: 
-                    [amntMails, size] = self.getMailboxStats()
-                    emails = self.listEmails()
-                    self._connection.sendall(f'+OK: {amntMails} {size}\n{emails}'.encode('utf-8'))
+                    [amnt, total_size, emails] = self.listEmails()
+                    self.sendMessage(f'+OK: {amnt} Messages ({total_size} bytes)\n{emails}')
                 elif len(list) == 2:
-                    [amntMails, size] = self.getMailboxStats()
+                    [amntMails, size] = self.getMailBoxStats()
                     emailno = list[1]
                     if not emailno.isnumeric():
-                        self._connection.sendall(b'-ERR: emailno must be a number\n')
+                        self.sendMessage('-ERR: emailno must be a number')
                     emailno = int(emailno)
                     if not (1 <= emailno <= amntMails):
-                        self._connection.sendall(b'-ERR: emailno not found\n')
+                        self.sendMessage('-ERR: emailno not found')
+                    if emailno in self._deleted:
+                        self.sendMessage('-ERR: email deleted')
                     else:
                         emails = self.listEmails(emailno)
-                        self._connection.sendall(f'+OK:\n{emails}'.encode('utf-8'))
+                        self.sendMessage(f'+OK:\n{emails}')
                 else:
-                    self._connection.sendall(b'-ERR: LIST [emailno] with emailno optional expected\n')
+                    self.sendMessage('-ERR: LIST [emailno] with emailno optional expected')
 
 
             case 'RETR':
                 if not self._authenticated:
-                    self._connection.sendall(b'-ERR: authenticate first\n')
+                    self.sendMessage('-ERR: authenticate first\n')
                 elif len(list) != 2:
-                    self._connection.sendall(b'-ERR: RETR <emailno> expected\n')
+                    self.sendMessage('-ERR: RETR <emailno> expected\n')
                 elif not list[1].isnumeric():
-                    self._connection.sendall(b'-ERR: RETR <emailno> emailno must be number\n')
+                    self.sendMessage('-ERR: RETR <emailno> emailno must be number\n')
                 else: 
                     emailno = int(list[1])
-                    (size, email) = self.getEmailByNumber(emailno)
-                    if size != None and email != None:
-                        self._connection.sendall(f'+OK: {size}\n{email}\n'.encode('utf-8'))
+                    if emailno in self._deleted:
+                        self.sendMessage('-ERR: email marked deleted')
                     else:
-                        self._connection.sendall(b'-ERR: RETR <emailno> mail not found\n')
+                        (size, email) = self.getEmailByNumber(emailno)
+                        if size != None and email != None:
+                            self.sendMessage(f'+OK: {size}\n{email}')
+                        else:
+                            self.sendMessage('-ERR: RETR <emailno> mail not found')
 
             case 'DELE':
                 if not self._authenticated:
-                    self._connection.sendall(b'-ERR: authenticate first\n')
+                    self.sendMessage('-ERR: authenticate first')
                 elif len(list) != 2:
-                    self._connection.sendall(b'-ERR: DELE <emailno> expected\n')
+                    self.sendMessage('-ERR: DELE <emailno> expected')
                 elif not list[1].isnumeric():
-                    self._connection.sendall(b'-ERR: DELE <emailno> emailno must be number\n')
+                    self.sendMessage('-ERR: DELE <emailno> emailno must be number')
                 else: 
                     emailno = int(list[1])
-                    amntMails = self.getMailboxStats()[0]
+                    amntMails = self.getMailBoxStats()[0]
                     if (1 <= emailno <= amntMails):
-                        index = self.getEmailIndex(emailno)
-                        self._deleted.add(index)
-                        self._connection.sendall(f'+OK: email no {emailno} deleted\n'.encode('utf-8'))
+                        if emailno in self._deleted:
+                            self.sendMessage('-ERR: email already deleted')
+                        else:
+                            self._deleted.add(emailno)
+                            self.sendMessage(f'+OK: email no {emailno} deleted')
                     else:
-                        self._connection.sendall(b'-ERR: emailno not found\n')
+                        self.sendMessage('-ERR: emailno not found')
 
             case 'RSET':
                 if not self._authenticated:
-                    self._connection.sendall(b'-ERR: authenticate first\n')
+                    self.sendMessage('-ERR: authenticate first')
                 elif len(list) != 1:
-                    self._connection.sendall(b'-ERR: RSET takes no arguments\n')
+                    self.sendMessage('-ERR: RSET takes no arguments')
                 else:
                     self._deleted = set()
-                    amntMails = self.getMailboxStats()[0]
-                    self._connection.sendall(f'+OK: mailbox contains {amntMails} messages\n'.encode('utf-8'))
+                    amntMails = self.getMailBoxStats()[0]
+                    self.sendMessage(f'+OK: mailbox contains {amntMails} messages')
                         
             case _:
-                self._connection.sendall(b'-ERR: unsupported command\n')
+                self.sendMessage('-ERR: unsupported command')
     
-    def getMailboxStats(self):
+    def readMailbox(self):
+        with open(self._mailboxPath, "r", encoding="utf-8") as mailbox:
+            # Lock the file before reading
+            fcntl.flock(mailbox, fcntl.LOCK_EX)
+            try:
+                return mailbox.readlines()
+            finally:
+                fcntl.flock(mailbox, fcntl.LOCK_UN)
+    
+    def getAllMailboxStats(self):
         amntMails = 0
-        mailbox = open(self._mailboxPath, "r", encoding="utf-8")
-        index = 1
-        for line in mailbox:
+        for line in self.readMailbox():
             if line.strip() == ".":
-                if not index in self._deleted:
+                amntMails += 1
+        size = os.path.getsize(self._mailboxPath)
+        return [amntMails, size]
+    
+    def getMailBoxStats(self):
+        amntMails = 0
+        index = 0
+        for line in self.readMailbox():
+            if line.strip() == ".":
+                if index not in self._deleted:
                     amntMails += 1
-                index += 1
         size = os.path.getsize(self._mailboxPath)
         return [amntMails, size]
     
     def listEmails(self, email_number = None):
         emails = []
-        mailbox = open(self._mailboxPath, "r", encoding="utf-8")
-        index = 1
         current_email= []
-        for line in mailbox:
+        for line in self.readMailbox():
             if line.strip() == ".":
-                if not index in self._deleted:
-                   emails.append("\n".join(current_email))
+                emails.append("\n".join(current_email))
                 current_email = []
-                index += 1
             else:
                 current_email.append(line.strip())
 
         output = ''
         if email_number is not None:
             email_size = len(emails[email_number - 1].encode("utf-8"))
-            output += f"{email_number}. {email_size}\n"
+            output += f"{email_number} {email_size}\n"
+            return output
         else:
+            amnt = 0
+            total = 0
             for i, email in enumerate(emails, start=1):
-                email_size = len(email.encode("utf-8"))
-                output += f"{i}. {email_size}\n"
-        return output
+                if i not in self._deleted:
+                    amnt+= 1
+                    email_size = len(email.encode("utf-8"))
+                    total += email_size
+                    output += f"{i} {email_size}\n"
+            return [amnt, total, output]
     
     def getEmailByNumber(self, emailno):
-        mailbox = open(self._mailboxPath, "r", encoding="utf-8")
         emails = []
         current_email = []
-        index = 1
-        for line in mailbox:
+        for line in self.readMailbox():
             if line.strip() == ".":
-                if index not in self._deleted:
-                    emails.append("\n".join(current_email))
-                index += 1
+                emails.append("\n".join(current_email))
                 current_email = []
             else:
                 current_email.append(line.strip())
@@ -204,19 +227,19 @@ class Session:
         else:
             return None, None
         
+        
     def getEmailIndex(self, emailno):
         delEmailList = list(self._deleted)
-        addCount = 0
+        addCount = emailno
         for number in delEmailList:
-            if number <= emailno:
+            if number <= addCount:
                 addCount += 1
-        return emailno + addCount
+        return addCount
     
     def deleteMails(self):
-        mailbox = open(self._mailboxPath, "r", encoding="utf-8")
         emails = []
         current_email = []
-        for line in mailbox:
+        for line in self.readMailbox():
             if line.strip() == ".":
                 emails.append("\n".join(current_email) + "\n.")
                 current_email = []
@@ -225,8 +248,13 @@ class Session:
 
         emails = [email for i, email in enumerate(emails, start=1) if i not in self._deleted]
         
-        mailbox = open(self._mailboxPath, "w", encoding="utf-8")
-        mailbox.write("\n".join(emails) + "\n")
+        with open(self._mailboxPath, "w", encoding="utf-8") as mailbox:
+            # Lock the file before writing
+            fcntl.flock(mailbox, fcntl.LOCK_EX)
+            try:
+                mailbox.write("\n".join(emails) + "\n")
+            finally:
+                fcntl.flock(mailbox, fcntl.LOCK_UN)
 
 def handle_client(conn, addr):
     ses = Session(conn)
