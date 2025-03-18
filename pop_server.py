@@ -80,7 +80,7 @@ class Session:
                 elif len(list) != 1:
                     self.sendMessage('-ERR: STAT takes no arguments')
                 else:
-                    [amntMails, size] = self.getAllMailboxStats()
+                    [amntMails, size] = self.getMailBoxStats()
                     self.sendMessage(f'+OK: {amntMails} {size}')
 
 
@@ -176,13 +176,18 @@ class Session:
     
     def getMailBoxStats(self):
         amntMails = 0
-        index = 0
+        index = 1
+        total_size = 0
+        email_size = 0
         for line in self.readMailbox():
+            email_size += len(line.encode('utf-8'))
             if line.strip() == ".":
                 if index not in self._deleted:
                     amntMails += 1
-        size = os.path.getsize(self._mailboxPath)
-        return [amntMails, size]
+                    total_size += email_size
+                email_size = 0
+                index += 1
+        return [amntMails, total_size]
     
     def listEmails(self, email_number = None):
         emails = []
@@ -263,7 +268,7 @@ def handle_client(conn, addr):
         for line in temp.splitlines():
             quit = ses.parseCmd(line)
         if (quit):
-                break
+            break
 
 def main():
     if len(sys.argv) != 2:

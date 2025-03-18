@@ -322,6 +322,8 @@ class MailClientGUI:
         self.password = tk.StringVar()
 
         self.default_font = tkFont.Font(family="Arial", size=16)
+
+        self.pop_connection = None
         
         self.create_login_screen()
     
@@ -355,11 +357,11 @@ class MailClientGUI:
             s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
             s.connect((self.server_ip, self.pop_port))
             s.recv(1024)
-            s.sendall(f"USER {username}\r\n".encode('utf-8'))
+            s.sendall(f"USER {username}".encode('utf-8'))
             s.recv(1024)
-            s.sendall(f"PASS {password}\r\n".encode('utf-8'))
+            s.sendall(f"PASS {password}".encode('utf-8'))
             auth_resp = s.recv(1024).decode('utf-8').strip()
-            s.sendall(b"QUIT\r\n")
+            s.sendall(b"QUIT")
             s.recv(1024)
             return auth_resp.startswith("+OK")
         except Exception:
@@ -395,19 +397,12 @@ class MailClientGUI:
         tk.Button(frame, text="Send", font=self.default_font, command=self.send_mail, bg="#4CAF50", fg='#000000').pack(pady=5, fill="x")
         tk.Button(frame, text="Back", font=self.default_font, command=self.create_main_menu, bg="#9E9E9E",fg='#000000').pack(pady=5, fill="x")
     
-    def manage_mail(self, s=None):
-        #start POP3 session
-        if s is None:
-            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-            s.connect((self.server_ip, self.pop_port))
-            s.recv(1024) #greeting message
-            s.sendall(f"USER {self.u}\r\n".encode('utf-8'))
-            s.recv(1024) # ok message (username always ok)
-            s.sendall(f"PASS {self.p}\r\n".encode('utf-8'))
-            s.recv(1024) # ok message since login has been checked
+    def manage_mail(self):
+        if self.pop_connection == None:
+            self.open_pop_connection()
 
-        s.sendall(b'STAT') #get the amount of emails
-        stats = s.recv(1024).decode("utf-8")
+        self.send_message('STAT') #get the amount of emails
+        stats = self.pop_connection.recv(1024).decode("utf-8")
         amnt = stats.split(' ')[1]
         amnt = int(amnt)
         bytes = stats.split(' ')[2].strip('\r\n')
@@ -416,7 +411,7 @@ class MailClientGUI:
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0", width=1000)
         frame.pack(expand=True, fill="x")
 
-        label = tk.Label(frame, text=f"{amnt} Messages {bytes} Bytes", font=self.default_font, bg="#f0f0f0", fg="#000000", wraplength=1000)
+        label = tk.Label(frame, text=f"Mailbox: {amnt} Messages ({bytes} Bytes)", font=self.default_font, bg="#f0f0f0", fg="#000000", wraplength=1000)
         label.pack(fill='x', expand=True)
 
 
@@ -438,23 +433,23 @@ class MailClientGUI:
 
 
         for i in range(1, amnt + 1):
-            s.sendall(f'RETR {i}'.encode('utf-8'))
-            content = s.recv(1024).decode("utf-8")
+            self.send_message(f'RETR {i}')
+            content = self.pop_connection.recv(1024).decode("utf-8")
             if not content.startswith('-ERR'):
                 summary = f'{i}. {summarize_mail(content)}'
-                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary, s)).pack(fill="x", pady=2, expand=True)
+                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary)).pack(fill="x", pady=2, expand=True)
         
-        tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
-        tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
     
-    def view_email(self, summary, s):
+    def view_email(self, summary):
         self.clear_screen()
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True, fill="both")
 
         emailno = summary.split('.')[0]
-        s.sendall(f'RETR {emailno}'.encode('utf-8'))
-        content = s.recv(1024).decode()
+        self.send_message(f'RETR {emailno}')
+        content = self.pop_connection.recv(1024).decode()
         lines = content.split('\n')
         email_content = ''
 
@@ -468,23 +463,23 @@ class MailClientGUI:
 
         tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
         
-        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email(emailno, s), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
-        tk.Button(frame, text="Back", font=self.default_font, command=lambda: self.manage_mail(s), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email(emailno), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Back", font=self.default_font, command=lambda: self.manage_mail(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
     
-    def delete_email(self, emailno, s):
-        s.sendall(f'DELE {emailno}'.encode('utf-8'))
-        response = s.recv(2024).decode('utf-8')
+    def delete_email(self, emailno):
+        self.send_message(f'DELE {emailno}')
+        response = self.pop_connection.recv(2024).decode('utf-8')
         if response.startswith('+OK'):
             messagebox.showinfo('Delete', 'Message deleted.')
         else:
             messagebox.showinfo('Delete', 'Something went wrong')
-        
-        self.manage_mail(s)
+        self.manage_mail()
     
     def close_pop_connection(self):
         self.pop_connection.sendall(b'QUIT\r\n')
         self.pop_connection.recv(1024)
         self.pop_connection.close()
+        self.pop_connection = None
     
     def open_pop_connection(self):
         self.pop_connection = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
@@ -508,7 +503,6 @@ class MailClientGUI:
     
     def view_mail_2(self, mail_number, back_fn):
         self.clear_screen()
-        print(mail_number)
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True, fill="both")
 
@@ -647,20 +641,27 @@ class MailClientGUI:
         for widget in self.root.winfo_children():
             widget.destroy()
 
-    def save_changes(self, s):
-        s.sendall(b'QUIT')
-        s.recv(1024)
-        s.close()
+    def save_changes(self):
+        self.send_message('QUIT')
+        self.pop_connection.recv(1024)
+        self.close_pop_connection()
         self.create_main_menu()
 
-    def reset_changes(self, s):
-        s.sendall(b'RSET')
-        s.recv(1024)
-        self.manage_mail(s)
+    def reset_changes(self):
+        self.send_message('RSET')
+        self.pop_connection.recv(1024)
+        self.manage_mail()
 
     def on_frame_configure(self, event):
         """Update scroll region when the frame size changes."""
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def send_message(self, message):
+        try: 
+            self.pop_connection.sendall(f'{message}\r\n'.encode('utf-8'))
+        except:
+            messagebox.showerror('Error', 'Connection timed out.')
+
 
 def summarize_mail(content):
     lines = content.split("\n")
@@ -677,7 +678,7 @@ def main():
     
     server_ip = sys.argv[1]
     smtp_port = 2525
-    pop_port = 1100
+    pop_port = 1101
     
     root = tk.Tk()
     MailClientGUI(root, server_ip, smtp_port, pop_port)
