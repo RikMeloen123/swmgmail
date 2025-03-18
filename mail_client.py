@@ -437,7 +437,7 @@ class MailClientGUI:
             content = self.pop_connection.recv(1024).decode("utf-8")
             if not content.startswith('-ERR'):
                 summary = f'{i}. {summarize_mail(content)}'
-                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda i=i: self.view_mail_2(i, lambda: self.manage_mail())).pack(fill="x", pady=2, expand=True)
+                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda i=i: self.view_mail(i, lambda: self.manage_mail())).pack(fill="x", pady=2, expand=True)
         
         tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
@@ -457,7 +457,7 @@ class MailClientGUI:
         self.pop_connection.sendall(f"PASS {self.p}\r\n".encode('utf-8'))
         self.pop_connection.recv(1024)
     
-    def delete_email_2(self, mail_number, callback_fn):
+    def delete_mail(self, mail_number, callback_fn):
         open_connection = True
         if self.pop_connection is None:
             open_connection = False
@@ -472,7 +472,7 @@ class MailClientGUI:
             self.close_pop_connection()
         callback_fn()
     
-    def view_mail_2(self, mail_number, back_fn):
+    def view_mail(self, mail_number, back_fn):
         self.clear_screen()
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True, fill="both")
@@ -498,7 +498,7 @@ class MailClientGUI:
 
         tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
         
-        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email_2(mail_number, back_fn), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
+        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_mail(mail_number, back_fn), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Back", font=self.default_font, command=back_fn, bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
     
     def search_mail(self):
@@ -594,7 +594,7 @@ class MailClientGUI:
             inner_frame = tk.Frame(self.results_box)
             self.results_box.window_create(tk.END, window=inner_frame)
             for i, result in results:
-                tk.Button(inner_frame, text=result, font=self.default_font, command=lambda i=i: self.view_mail_2(i, back_fn), bg="#4CAF50").pack(pady=5, fill="x")
+                tk.Button(inner_frame, text=result, font=self.default_font, command=lambda i=i: self.view_mail(i, back_fn), bg="#4CAF50").pack(pady=5, fill="x")
         else:
             self.results_box.insert(tk.END, "No emails found.")
         self.results_box.configure(state='disabled')
