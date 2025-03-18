@@ -709,3 +709,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+"""
+The GUI has an intuitive way to interact with it. Just run `python3 mailserver_smtp.py 2525`, `python3 pop_server.py 1100` and then `python3 mail_client.py localhost`, then a GUI window will pop up to interact with.
+"""
