@@ -414,7 +414,6 @@ class MailClientGUI:
         label = tk.Label(frame, text=f"Mailbox: {amnt} Messages ({bytes} Bytes)", font=self.default_font, bg="#f0f0f0", fg="#000000", wraplength=1000)
         label.pack(fill='x', expand=True)
 
-
         container = tk.Frame(frame)
         container.pack(fill=tk.BOTH, expand=True)
 
@@ -430,7 +429,6 @@ class MailClientGUI:
         self.canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
 
         self.inner_frame.bind("<Configure>", self.on_frame_configure)
-
 
         for i in range(1, amnt + 1):
             self.send_message(f'RETR {i}')
