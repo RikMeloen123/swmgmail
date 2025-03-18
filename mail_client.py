@@ -418,18 +418,18 @@ class MailClientGUI:
         container = tk.Frame(frame)
         container.pack(fill=tk.BOTH, expand=True)
 
-        canvas = tk.Canvas(container)
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(container)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=canvas.yview)
+        scrollbar = tk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
 
-        inner_frame = tk.Frame(self.canvas)
+        self.inner_frame = tk.Frame(self.canvas)
 
-        canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
+        self.canvas.create_window((0, 0), window=self.inner_frame, anchor="nw")
 
-        inner_frame.bind("<Configure>", self.on_frame_configure)
+        self.inner_frame.bind("<Configure>", self.on_frame_configure)
 
 
         for i in range(1, amnt + 1):
@@ -703,6 +703,8 @@ class MailClientGUI:
             self.pop_connection.sendall(f'{message}\r\n'.encode('utf-8'))
         except:
             messagebox.showerror('Error', 'Connection timed out.')
+            self.pop_connection = None
+            self.create_login_screen()
 
 
 def summarize_mail(content):
