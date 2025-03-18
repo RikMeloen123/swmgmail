@@ -437,43 +437,10 @@ class MailClientGUI:
             content = self.pop_connection.recv(1024).decode("utf-8")
             if not content.startswith('-ERR'):
                 summary = f'{i}. {summarize_mail(content)}'
-                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda summary=summary: self.view_email(summary)).pack(fill="x", pady=2, expand=True)
+                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda i=i: self.view_mail_2(i, lambda: self.manage_mail())).pack(fill="x", pady=2, expand=True)
         
         tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
-    
-    def view_email(self, summary):
-        self.clear_screen()
-        frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
-        frame.pack(expand=True, fill="both")
-
-        emailno = summary.split('.')[0]
-        self.send_message(f'RETR {emailno}')
-        content = self.pop_connection.recv(1024).decode()
-        lines = content.split('\n')
-        email_content = ''
-
-        for line in lines:
-            if line.startswith('+OK'):
-                bytes = line.split('+OK: ')[1]
-            else:
-                email_content += f'{line}\n'
-        email_content += f'Amount of bytes: {bytes}\n'
-
-
-        tk.Label(frame, text=email_content, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=360, anchor="w", justify="left").pack(fill="x", pady=2)
-        
-        tk.Button(frame, text="Delete", font=self.default_font, command=lambda: self.delete_email(emailno), bg="#f44336", fg="#000000").pack(pady=10, fill="x")
-        tk.Button(frame, text="Back", font=self.default_font, command=lambda: self.manage_mail(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
-    
-    def delete_email(self, emailno):
-        self.send_message(f'DELE {emailno}')
-        response = self.pop_connection.recv(2024).decode('utf-8')
-        if response.startswith('+OK'):
-            messagebox.showinfo('Delete', 'Message deleted.')
-        else:
-            messagebox.showinfo('Delete', 'Something went wrong')
-        self.manage_mail()
     
     def close_pop_connection(self):
         self.pop_connection.sendall(b'QUIT\r\n')
@@ -491,14 +458,18 @@ class MailClientGUI:
         self.pop_connection.recv(1024)
     
     def delete_email_2(self, mail_number, callback_fn):
-        self.open_pop_connection()
+        open_connection = True
+        if self.pop_connection is None:
+            open_connection = False
+            self.open_pop_connection()
         self.pop_connection.sendall(f'DELE {mail_number}'.encode('utf-8'))
         response = self.pop_connection.recv(2024).decode('utf-8')
         if response.startswith('+OK'):
             messagebox.showinfo('Delete', 'Message deleted.')
         else:
             messagebox.showinfo('Delete', 'Something went wrong')
-        self.close_pop_connection()
+        if not open_connection:
+            self.close_pop_connection()
         callback_fn()
     
     def view_mail_2(self, mail_number, back_fn):
@@ -506,10 +477,14 @@ class MailClientGUI:
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
         frame.pack(expand=True, fill="both")
 
-        self.open_pop_connection()
+        open_connection = True
+        if self.pop_connection is None:
+            open_connection = False
+            self.open_pop_connection()
         self.pop_connection.sendall(f'RETR {mail_number}'.encode('utf-8'))
         content = self.pop_connection.recv(1024).decode()
-        self.close_pop_connection()
+        if not open_connection:
+            self.close_pop_connection()
         lines = content.split('\n')
         email_content = ''
 
@@ -684,8 +659,6 @@ class MailClientGUI:
             widget.destroy()
 
     def save_changes(self):
-        self.send_message('QUIT')
-        self.pop_connection.recv(1024)
         self.close_pop_connection()
         self.create_main_menu()
 
