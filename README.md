@@ -5,6 +5,7 @@ This project implements a simple mail system consisting of an SMTP server, a POP
 ## Features
 
 ### Mail Client (`mail_client.py`)
+
 - **Send Emails**: Compose and send emails using the SMTP protocol.
 - **Receive Emails**: Connect to the POP3 server to fetch received emails.
 - **Search Emails**: Search emails by sender, subject, or time.
@@ -12,11 +13,13 @@ This project implements a simple mail system consisting of an SMTP server, a POP
 - **Graphical Interface**: A user-friendly Tkinter-based GUI for ease of use.
 
 ### SMTP Server (`mailserver_smtp.py`)
+
 - **Handle Email Sending**: Receives emails from clients and stores them in user mailboxes.
 - **User Validation**: Ensures that recipients exist before accepting emails.
 - **Multi-Threaded**: Supports multiple simultaneous connections.
 
 ### POP3 Server (`pop_server.py`)
+
 - **User Authentication**: Validates users against a stored credential file (`userinfo.txt`).
 - **Retrieve Emails**: Allows users to list, read, and delete emails from their mailbox.
 - **Supports POP3 Commands**: Implements `STAT`, `LIST`, `RETR`, `DELE`, `RSET`, and `QUIT` commands.
@@ -25,6 +28,7 @@ This project implements a simple mail system consisting of an SMTP server, a POP
 ## Installation & Usage
 
 ### Prerequisites
+
 - Python 3.x
 - Tkinter (included in standard Python installations)
 - Socket library (included in Python standard library)
@@ -41,6 +45,8 @@ python pop_server.py 1100
 ### Running the Mail Client
 
 The mail client requires the mail server's IP address as an argument:
+Be sure to comment out the terminal version or the gui version according
+to which version of the client you want to run.
 
 ```bash
 python mail_client.py <server_IP>
@@ -59,7 +65,7 @@ Replace `<server_IP>` with the actual IP address of the machine running the mail
 ```
 
 ## Future Enhancements
+
 - Add support for emails to different email addresses.
 - Improve error handling and security.
 - Add support for encryption (TLS/SSL).
-
