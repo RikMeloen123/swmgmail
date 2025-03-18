@@ -405,7 +405,7 @@ class MailClientGUI:
         stats = self.pop_connection.recv(1024).decode("utf-8")
         amnt = stats.split(' ')[1]
         amnt = int(amnt)
-        bytes = stats.split(' ')[2]
+        bytes = stats.split(' ')[2].strip('\r\n')
 
         self.clear_screen()
         frame = tk.Frame(self.root, padx=20, pady=20, bg="#f0f0f0")
@@ -430,12 +430,17 @@ class MailClientGUI:
 
         self.inner_frame.bind("<Configure>", self.on_frame_configure)
 
-        for i in range(1, amnt + 1):
-            self.send_message(f'RETR {i}')
+        self.send_message('LIST')
+        response = self.pop_connection.recv(1024).decode('utf-8')
+        mails = response.split('\n')
+
+        for mail in mails[1:]:
+            number = mail.split(' ')[0]
+            self.send_message(f'RETR {number}')
             content = self.pop_connection.recv(1024).decode("utf-8")
             if not content.startswith('-ERR'):
-                summary = f'{i}. {summarize_mail(content)}'
-                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda i=i: self.view_mail(i, lambda: self.manage_mail())).pack(fill="x", pady=2, expand=True)
+                summary = f'{number}. {summarize_mail(content)}'
+                tk.Button(self.inner_frame, text=summary, font=("Arial", 12), bg="#f0f0f0", fg="#000000", wraplength=400, anchor="w", justify="left", command=lambda number=number: self.view_mail(number, lambda: self.manage_mail())).pack(fill="x", pady=2, expand=True)
         
         tk.Button(frame, text="Reset changes", font=self.default_font, command=lambda: self.reset_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
         tk.Button(frame, text="Save changes and exit", font=self.default_font, command=lambda: self.save_changes(), bg="#9E9E9E", fg="#000000").pack(pady=10, fill="x")
@@ -693,7 +698,7 @@ def main():
     
     server_ip = sys.argv[1]
     smtp_port = 2525
-    pop_port = 1101
+    pop_port = 1100
     
     root = tk.Tk()
     MailClientGUI(root, server_ip, smtp_port, pop_port)
