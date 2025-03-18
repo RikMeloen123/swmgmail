@@ -252,14 +252,17 @@ class Session:
             finally:
                 fcntl.flock(mailbox, fcntl.LOCK_UN)
 
-def handle_client(conn):
+def handle_client(conn, addr):
     ses = Session(conn)
+    quit = False
     while True:
         temp = conn.recv(MESSAGE_SIZE).decode().strip()
         for line in temp.splitlines():
             quit = ses.handle_command(line)
-            if (quit):
+            if quit:
                 break
+        if quit:
+            break
 
 def main():
     if len(sys.argv) != 2:
@@ -273,7 +276,7 @@ def main():
     while True:
         c, addr = server_socket.accept()
         print(f"POP3 connection established with {addr}")
-        threading.Thread(target=handle_client, args=(c)).start()
+        threading.Thread(target=handle_client, args=(c, addr)).start()
 
 if __name__ == "__main__":
     main()
